@@ -31,13 +31,16 @@ export async function getMessageForAttestation(txHash: string): Promise<CCTPMess
       crypto.getRandomValues(messageBytes);
       crypto.getRandomValues(attestation);
       
+      // Use a fixed amount for testing
+      const amount = BigInt("1000000"); // 1 USDC (with 6 decimals)
+      
       resolve({
         messageBytes,
         attestation,
         nonce: Math.floor(Math.random() * 1000000),
         sourceChain: 1, // Solana
         targetChain: 2, // Ethereum
-        amount: BigInt(params.amount || "0") * BigInt(10 ** 6), // USDC has 6 decimals
+        amount: amount, 
       });
     }, 1500);
   });
