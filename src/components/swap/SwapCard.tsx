@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowDownUp, ChevronDown } from "lucide-react";
+import { ArrowDownUp, ChevronDown, Send } from "lucide-react";
 import { NetworkSelector } from "@/components/swap/NetworkSelector";
 import { TokenSelector } from "@/components/swap/TokenSelector";
 import { ChainInfo, TokenInfo, SwapParams } from "@/wormhole/types";
@@ -34,6 +34,9 @@ export function SwapCard() {
   const [showFromTokenSelector, setShowFromTokenSelector] = useState(false);
   const [showToTokenSelector, setShowToTokenSelector] = useState(false);
   
+  // Transfer state
+  const [isTransferReady, setIsTransferReady] = useState(false);
+  
   useEffect(() => {
     // When network changes, reset token selection if token not available
     if (fromNetwork) {
@@ -52,6 +55,15 @@ export function SwapCard() {
       }
     }
   }, [fromNetwork, toNetwork, fromToken, toToken]);
+  
+  // Check if transfer is ready when wallet connects and form is valid
+  useEffect(() => {
+    if (isConnected && fromAmount && parseFloat(fromAmount) > 0 && fromNetwork && toNetwork && fromToken && toToken) {
+      setIsTransferReady(true);
+    } else {
+      setIsTransferReady(false);
+    }
+  }, [isConnected, fromAmount, fromNetwork, toNetwork, fromToken, toToken]);
   
   const handleSwapNetworks = () => {
     const tempNetwork = fromNetwork;
@@ -72,7 +84,7 @@ export function SwapCard() {
     return result.toFixed(result < 0.1 ? 6 : 2);
   };
   
-  const handleSwapNow = async () => {
+  const handleTransfer = async () => {
     if (!isConnected) {
       openModal();
       return;
@@ -81,7 +93,7 @@ export function SwapCard() {
     if (!fromAmount || parseFloat(fromAmount) <= 0) {
       toast({
         title: "Invalid amount",
-        description: "Please enter a valid amount to swap.",
+        description: "Please enter a valid amount to transfer.",
         variant: "destructive"
       });
       return;
@@ -90,7 +102,7 @@ export function SwapCard() {
     if (!fromNetwork || !toNetwork || !fromToken || !toToken) {
       toast({
         title: "Invalid selection",
-        description: "Please select networks and tokens for the swap.",
+        description: "Please select networks and tokens for the transfer.",
         variant: "destructive"
       });
       return;
@@ -112,17 +124,18 @@ export function SwapCard() {
       const txHash = await initiateCCTPTransfer(swapParams);
       
       toast({
-        title: "Swap Initiated",
+        title: "Transfer Initiated",
         description: `Cross-chain transfer initiated. Hash: ${txHash.substring(0, 10)}...`,
       });
       
       // Reset form
       setFromAmount("");
+      setIsTransferReady(false);
     } catch (error) {
-      console.error("Swap failed:", error);
+      console.error("Transfer failed:", error);
       toast({
-        title: "Swap Failed",
-        description: "There was an error processing your swap. Please try again.",
+        title: "Transfer Failed",
+        description: "There was an error processing your transfer. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -228,7 +241,7 @@ export function SwapCard() {
     <Card className="bg-darker border-border max-w-lg w-full">
       <CardHeader>
         <CardTitle className="text-white">Swap Crypto</CardTitle>
-        <CardDescription>Cross-chain swap with Wormhole CCTP</CardDescription>
+        <CardDescription>Cross-chain transfer with Wormhole CCTP</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* FROM SECTION */}
@@ -396,15 +409,24 @@ export function SwapCard() {
           </div>
         </div>
         
-        {/* SWAP ACTION */}
-        <Button 
-          className="w-full" 
-          onClick={handleSwapNow}
-          disabled={!fromAmount || parseFloat(fromAmount) <= 0 || isSwapping}
-        >
-          {!isConnected ? "Connect Wallet" : 
-            isSwapping ? "Swapping..." : "Swap Now"}
-        </Button>
+        {/* Transfer ACTION */}
+        {!isConnected ? (
+          <Button 
+            className="w-full" 
+            onClick={openModal}
+          >
+            Connect Wallet
+          </Button>
+        ) : (
+          <Button 
+            className="w-full flex items-center justify-center gap-2" 
+            onClick={handleTransfer}
+            disabled={!isTransferReady || isSwapping}
+          >
+            <Send className="h-4 w-4" />
+            {isSwapping ? "Processing..." : "Transfer Now"}
+          </Button>
+        )}
       </CardContent>
     </Card>
   );
