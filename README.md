@@ -1,6 +1,6 @@
 ## Project info
 
-**URL**: https://lovable.dev/projects/e11bf5d7-8bec-4a3a-b6fb-ad670fd70005
+**URL**: [https://lovable.dev/projects/e11bf5d7-8bec-4a3a-b6fb-ad670fd70005](https://preview--travel-money-flow.lovable.app/)
 
 ## How can I edit this code?
 
