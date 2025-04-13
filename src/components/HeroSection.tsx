@@ -34,7 +34,7 @@ export function HeroSection() {
             </Button>
             
             <Button variant="outline" size="lg" asChild>
-              <a href="https://t.me/travelmoney_bot" target="_blank" rel="noopener noreferrer" className="flex items-center">
+              <a href="https://t.me/travelmoneyapp_bot" target="_blank" rel="noopener noreferrer" className="flex items-center">
                 <MessageCircle className="mr-2 h-4 w-4" />
                 Talk to Telegram Bot
               </a>
