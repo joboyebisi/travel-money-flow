@@ -1,5 +1,6 @@
 
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,10 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowDownUp } from "lucide-react";
 
-export function SwapCard() {
+interface SwapCardProps {
+  isWalletConnected?: boolean;
+}
+
+export function SwapCard({ isWalletConnected = false }: SwapCardProps) {
   const [fromAmount, setFromAmount] = useState("");
   const [fromCurrency, setFromCurrency] = useState("usdc");
   const [toCurrency, setToCurrency] = useState("eth");
+  const [isSwapping, setIsSwapping] = useState(false);
+  const { toast } = useToast();
   
   const handleSwapCurrencies = () => {
     const temp = fromCurrency;
@@ -49,6 +56,50 @@ export function SwapCard() {
     const rate = rates[fromCurrency][toCurrency] || 0;
     const result = parseFloat(fromAmount) * rate;
     return result.toFixed(result < 0.1 ? 6 : 2);
+  };
+  
+  const handleSwapNow = async () => {
+    if (!isWalletConnected) {
+      toast({
+        title: "Wallet not connected",
+        description: "Please connect your wallet to perform swaps.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    if (!fromAmount || parseFloat(fromAmount) <= 0) {
+      toast({
+        title: "Invalid amount",
+        description: "Please enter a valid amount to swap.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsSwapping(true);
+    
+    // Simulate API call / blockchain transaction
+    try {
+      // Simulate a delay to represent the blockchain transaction
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      toast({
+        title: "Swap Successful",
+        description: `Swapped ${fromAmount} ${fromCurrency.toUpperCase()} to ${calculateToAmount()} ${toCurrency.toUpperCase()}`,
+      });
+      
+      // Reset form
+      setFromAmount("");
+    } catch (error) {
+      toast({
+        title: "Swap Failed",
+        description: "There was an error processing your swap. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSwapping(false);
+    }
   };
   
   return (
@@ -200,7 +251,13 @@ export function SwapCard() {
           </div>
         </div>
         
-        <Button className="w-full">Swap Now</Button>
+        <Button 
+          className="w-full" 
+          onClick={handleSwapNow}
+          disabled={!fromAmount || parseFloat(fromAmount) <= 0 || isSwapping}
+        >
+          {isSwapping ? "Swapping..." : "Swap Now"}
+        </Button>
       </CardContent>
     </Card>
   );
