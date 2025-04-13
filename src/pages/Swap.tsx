@@ -1,36 +1,33 @@
 
 import { useState } from "react";
-import { useToast } from "@/hooks/use-toast";
+import { useWallet } from "@/hooks/useWallet";
 import { DashboardNav } from "@/components/dashboard/DashboardNav";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { SwapCard } from "@/components/swap/SwapCard";
+import { WalletConnectModal } from "@/components/wallet/WalletConnectModal";
 
 export function Swap() {
-  const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const { toast } = useToast();
+  const { isModalOpen, openModal, closeModal, connect, isConnected } = useWallet();
   
-  const handleWalletConnect = () => {
-    // This would be replaced with actual wallet connection logic
-    setIsWalletConnected(true);
-    toast({
-      title: "Wallet Connected",
-      description: "Your wallet has been connected successfully.",
-    });
+  const handleWalletConnect = (walletName: string) => {
+    connect(walletName);
   };
 
   return (
     <div className="min-h-screen bg-dark flex flex-col md:flex-row">
       <DashboardNav />
       <div className="flex-1 overflow-auto">
-        <DashboardHeader 
-          title="Swap Crypto" 
-          isWalletConnected={isWalletConnected}
-          onConnectWallet={handleWalletConnect}
-        />
+        <DashboardHeader title="Swap Crypto" />
         <div className="p-6 flex justify-center">
-          <SwapCard isWalletConnected={isWalletConnected} />
+          <SwapCard />
         </div>
       </div>
+      
+      <WalletConnectModal
+        isOpen={isModalOpen} 
+        onClose={closeModal} 
+        onConnect={handleWalletConnect}
+      />
     </div>
   );
 }

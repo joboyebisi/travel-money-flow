@@ -1,70 +1,80 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useWallet } from "@/hooks/useWallet";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowDownUp } from "lucide-react";
+import { ArrowDownUp, ChevronDown } from "lucide-react";
+import { NetworkSelector } from "@/components/swap/NetworkSelector";
+import { TokenSelector } from "@/components/swap/TokenSelector";
+import { ChainInfo, TokenInfo, SwapParams } from "@/wormhole/types";
+import { initiateCCTPTransfer } from "@/wormhole/cctpTransfer";
+import { networkConfig } from "@/wormhole/config";
 
-interface SwapCardProps {
-  isWalletConnected?: boolean;
-}
-
-export function SwapCard({ isWalletConnected = false }: SwapCardProps) {
-  const [fromAmount, setFromAmount] = useState("");
-  const [fromCurrency, setFromCurrency] = useState("usdc");
-  const [toCurrency, setToCurrency] = useState("eth");
-  const [isSwapping, setIsSwapping] = useState(false);
+export function SwapCard() {
+  const { wallet, isConnected, openModal, getBalance } = useWallet();
   const { toast } = useToast();
   
-  const handleSwapCurrencies = () => {
-    const temp = fromCurrency;
-    setFromCurrency(toCurrency);
-    setToCurrency(temp);
+  const [fromAmount, setFromAmount] = useState("");
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [estimatedGas, setEstimatedGas] = useState("0.00");
+  
+  // Network selection state
+  const [fromNetwork, setFromNetwork] = useState<string | undefined>("solana");
+  const [toNetwork, setToNetwork] = useState<string | undefined>("ethereum");
+  
+  // Token selection state
+  const [fromToken, setFromToken] = useState<string | undefined>("USDC");
+  const [toToken, setToToken] = useState<string | undefined>("USDC");
+  
+  // Selection modals state
+  const [showFromNetworkSelector, setShowFromNetworkSelector] = useState(false);
+  const [showToNetworkSelector, setShowToNetworkSelector] = useState(false);
+  const [showFromTokenSelector, setShowFromTokenSelector] = useState(false);
+  const [showToTokenSelector, setShowToTokenSelector] = useState(false);
+  
+  useEffect(() => {
+    // When network changes, reset token selection if token not available
+    if (fromNetwork) {
+      const availableTokens = networkConfig.supportedTokens[fromNetwork];
+      if (!availableTokens.some(t => t.symbol === fromToken)) {
+        // Default to first available token (usually USDC)
+        setFromToken(availableTokens[0]?.symbol);
+      }
+    }
+    
+    if (toNetwork) {
+      const availableTokens = networkConfig.supportedTokens[toNetwork];
+      if (!availableTokens.some(t => t.symbol === toToken)) {
+        // Default to first available token (usually USDC)
+        setToToken(availableTokens[0]?.symbol);
+      }
+    }
+  }, [fromNetwork, toNetwork, fromToken, toToken]);
+  
+  const handleSwapNetworks = () => {
+    const tempNetwork = fromNetwork;
+    const tempToken = fromToken;
+    
+    setFromNetwork(toNetwork);
+    setToNetwork(tempNetwork);
+    setFromToken(toToken);
+    setToToken(tempToken);
   };
   
   const calculateToAmount = () => {
-    if (!fromAmount) return "";
+    if (!fromAmount || !fromToken || !toToken) return "";
     
     // Mock exchange rates (in real app, this would come from an API)
-    const rates = {
-      usdc: {
-        eth: 0.00041,
-        btc: 0.000016,
-        sol: 0.0625
-      },
-      eth: {
-        usdc: 2440,
-        btc: 0.039,
-        sol: 152.5
-      },
-      btc: {
-        usdc: 62500,
-        eth: 25.64,
-        sol: 3906.25
-      },
-      sol: {
-        usdc: 16,
-        eth: 0.0066,
-        btc: 0.00026
-      }
-    };
-    
-    // @ts-ignore
-    const rate = rates[fromCurrency][toCurrency] || 0;
+    const rate = 0.99; // Almost 1:1 for USDC to USDC minus fees
     const result = parseFloat(fromAmount) * rate;
     return result.toFixed(result < 0.1 ? 6 : 2);
   };
   
   const handleSwapNow = async () => {
-    if (!isWalletConnected) {
-      toast({
-        title: "Wallet not connected",
-        description: "Please connect your wallet to perform swaps.",
-        variant: "destructive"
-      });
+    if (!isConnected) {
+      openModal();
       return;
     }
     
@@ -77,21 +87,39 @@ export function SwapCard({ isWalletConnected = false }: SwapCardProps) {
       return;
     }
     
+    if (!fromNetwork || !toNetwork || !fromToken || !toToken) {
+      toast({
+        title: "Invalid selection",
+        description: "Please select networks and tokens for the swap.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setIsSwapping(true);
     
-    // Simulate API call / blockchain transaction
+    // Create swap parameters
+    const swapParams: SwapParams = {
+      sourceChain: fromNetwork,
+      targetChain: toNetwork,
+      sourceToken: fromToken,
+      targetToken: toToken,
+      amount: fromAmount
+    };
+    
     try {
-      // Simulate a delay to represent the blockchain transaction
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Simulate CCTP transfer
+      const txHash = await initiateCCTPTransfer(swapParams);
       
       toast({
-        title: "Swap Successful",
-        description: `Swapped ${fromAmount} ${fromCurrency.toUpperCase()} to ${calculateToAmount()} ${toCurrency.toUpperCase()}`,
+        title: "Swap Initiated",
+        description: `Cross-chain transfer initiated. Hash: ${txHash.substring(0, 10)}...`,
       });
       
       // Reset form
       setFromAmount("");
     } catch (error) {
+      console.error("Swap failed:", error);
       toast({
         title: "Swap Failed",
         description: "There was an error processing your swap. Please try again.",
@@ -102,161 +130,280 @@ export function SwapCard({ isWalletConnected = false }: SwapCardProps) {
     }
   };
   
+  const renderSelectedNetwork = (chainId?: string) => {
+    if (!chainId) return null;
+    
+    const chain = networkConfig.chains.find(c => c.id === chainId);
+    if (!chain) return null;
+    
+    return (
+      <div className="flex items-center gap-2">
+        {renderNetworkIcon(chain.icon)}
+        <span>{chain.name}</span>
+      </div>
+    );
+  };
+  
+  const renderSelectedToken = (chainId?: string, symbol?: string) => {
+    if (!chainId || !symbol) return null;
+    
+    const availableTokens = networkConfig.supportedTokens[chainId];
+    const token = availableTokens?.find(t => t.symbol === symbol);
+    if (!token) return null;
+    
+    return (
+      <div className="flex items-center gap-2">
+        {renderTokenIcon(token.symbol)}
+        <span className="font-bold">{token.symbol}</span>
+      </div>
+    );
+  };
+  
+  const renderNetworkIcon = (icon: string) => {
+    switch (icon) {
+      case "solana":
+        return (
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 via-blue-400 to-teal-300 flex items-center justify-center">
+            <span className="text-xs font-bold">S</span>
+          </div>
+        );
+      case "ethereum":
+        return (
+          <div className="w-6 h-6 rounded-full bg-purple-700 flex items-center justify-center">
+            <span className="text-xs font-bold">Ξ</span>
+          </div>
+        );
+      case "base":
+        return (
+          <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
+            <span className="text-xs font-bold">B</span>
+          </div>
+        );
+      case "bsc":
+        return (
+          <div className="w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center">
+            <span className="text-xs font-bold">BSC</span>
+          </div>
+        );
+      case "near":
+        return (
+          <div className="w-6 h-6 rounded-full bg-black flex items-center justify-center">
+            <span className="text-xs font-bold text-white">N</span>
+          </div>
+        );
+      default:
+        return (
+          <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center">
+            <span className="text-xs font-bold">?</span>
+          </div>
+        );
+    }
+  };
+  
+  const renderTokenIcon = (symbol: string) => {
+    switch (symbol.toLowerCase()) {
+      case "usdc":
+        return (
+          <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white">
+            <span className="text-xs font-bold">$</span>
+          </div>
+        );
+      case "sol":
+      case "wsol":
+        return (
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 via-blue-400 to-teal-300 flex items-center justify-center">
+            <span className="text-xs font-bold">S</span>
+          </div>
+        );
+      default:
+        return (
+          <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center">
+            <span className="text-xs font-bold">?</span>
+          </div>
+        );
+    }
+  };
+  
   return (
     <Card className="bg-darker border-border max-w-lg w-full">
       <CardHeader>
         <CardTitle className="text-white">Swap Crypto</CardTitle>
-        <CardDescription>Exchange your crypto at competitive rates</CardDescription>
+        <CardDescription>Cross-chain swap with Wormhole CCTP</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>From</Label>
-            <div className="flex gap-3">
-              <Select value={fromCurrency} onValueChange={setFromCurrency}>
-                <SelectTrigger className="w-[180px] bg-transparent">
-                  <SelectValue placeholder="Select token" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="usdc">
-                    <div className="flex items-center">
-                      <div className="w-5 h-5 rounded-full bg-blue-500 mr-2"></div>
-                      USDC
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="eth">
-                    <div className="flex items-center">
-                      <div className="w-5 h-5 rounded-full bg-purple-500 mr-2"></div>
-                      ETH
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="btc">
-                    <div className="flex items-center">
-                      <div className="w-5 h-5 rounded-full bg-orange-500 mr-2"></div>
-                      BTC
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="sol">
-                    <div className="flex items-center">
-                      <div className="w-5 h-5 rounded-full bg-teal-500 mr-2"></div>
-                      SOL
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={fromAmount}
-                onChange={(e) => setFromAmount(e.target.value)}
-                className="flex-1 bg-transparent"
-              />
-            </div>
-            <div className="flex justify-between text-sm">
+        {/* FROM SECTION */}
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">From</span>
+            {isConnected && fromToken && (
               <span className="text-muted-foreground">
-                Balance: {fromCurrency === "usdc" ? "5,240.00" : fromCurrency === "eth" ? "2.15" : fromCurrency === "btc" ? "0.084" : "325"} {fromCurrency.toUpperCase()}
+                Balance: {getBalance(fromToken)} {fromToken}
               </span>
-              <Button variant="ghost" size="sm" className="h-auto p-0 text-green-primary hover:text-green-primary hover:bg-transparent" onClick={() => {
-                setFromAmount(fromCurrency === "usdc" ? "5240" : fromCurrency === "eth" ? "2.15" : fromCurrency === "btc" ? "0.084" : "325");
-              }}>
+            )}
+          </div>
+          
+          {showFromNetworkSelector ? (
+            <NetworkSelector
+              selectedChain={fromNetwork}
+              onSelect={(chain) => {
+                setFromNetwork(chain.id);
+                setShowFromNetworkSelector(false);
+              }}
+              position="from"
+            />
+          ) : showFromTokenSelector ? (
+            <TokenSelector
+              chainId={fromNetwork}
+              selectedToken={fromToken}
+              onSelect={(token) => {
+                setFromToken(token.symbol);
+                setShowFromTokenSelector(false);
+              }}
+            />
+          ) : (
+            <div className="grid grid-cols-5 gap-3">
+              <Button
+                variant="outline"
+                className="col-span-2 flex justify-between items-center bg-dark"
+                onClick={() => setShowFromNetworkSelector(true)}
+              >
+                {renderSelectedNetwork(fromNetwork)}
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </Button>
+              
+              <Button
+                variant="outline"
+                className="col-span-1 flex justify-between items-center bg-dark"
+                onClick={() => setShowFromTokenSelector(true)}
+              >
+                {renderSelectedToken(fromNetwork, fromToken)}
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </Button>
+              
+              <div className="col-span-2">
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={fromAmount}
+                  onChange={(e) => setFromAmount(e.target.value)}
+                  className="bg-dark border-border h-full"
+                />
+              </div>
+            </div>
+          )}
+          
+          {isConnected && fromToken && fromNetwork && !showFromNetworkSelector && !showFromTokenSelector && (
+            <div className="flex justify-end">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-auto p-0 text-green-primary hover:text-green-primary hover:bg-transparent" 
+                onClick={() => {
+                  const balance = getBalance(fromToken);
+                  setFromAmount(balance);
+                }}
+              >
                 Max
               </Button>
             </div>
-          </div>
-          
-          <div className="flex justify-center">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="rounded-full h-10 w-10 bg-dark border border-border hover:bg-dark hover:text-green-primary"
-              onClick={handleSwapCurrencies}
-            >
-              <ArrowDownUp className="h-4 w-4" />
-            </Button>
-          </div>
-          
-          <div className="space-y-2">
-            <Label>To</Label>
-            <div className="flex gap-3">
-              <Select value={toCurrency} onValueChange={setToCurrency}>
-                <SelectTrigger className="w-[180px] bg-transparent">
-                  <SelectValue placeholder="Select token" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="usdc">
-                    <div className="flex items-center">
-                      <div className="w-5 h-5 rounded-full bg-blue-500 mr-2"></div>
-                      USDC
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="eth">
-                    <div className="flex items-center">
-                      <div className="w-5 h-5 rounded-full bg-purple-500 mr-2"></div>
-                      ETH
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="btc">
-                    <div className="flex items-center">
-                      <div className="w-5 h-5 rounded-full bg-orange-500 mr-2"></div>
-                      BTC
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="sol">
-                    <div className="flex items-center">
-                      <div className="w-5 h-5 rounded-full bg-teal-500 mr-2"></div>
-                      SOL
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                type="text"
-                placeholder="0.00"
-                value={calculateToAmount()}
-                readOnly
-                className="flex-1 bg-transparent"
-              />
-            </div>
-          </div>
+          )}
         </div>
         
+        {/* SWAP BUTTON */}
+        <div className="flex justify-center">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="rounded-full h-10 w-10 bg-dark border border-border hover:bg-dark hover:text-green-primary"
+            onClick={handleSwapNetworks}
+          >
+            <ArrowDownUp className="h-4 w-4" />
+          </Button>
+        </div>
+        
+        {/* TO SECTION */}
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">To</span>
+          </div>
+          
+          {showToNetworkSelector ? (
+            <NetworkSelector
+              selectedChain={toNetwork}
+              onSelect={(chain) => {
+                setToNetwork(chain.id);
+                setShowToNetworkSelector(false);
+              }}
+              position="to"
+            />
+          ) : showToTokenSelector ? (
+            <TokenSelector
+              chainId={toNetwork}
+              selectedToken={toToken}
+              onSelect={(token) => {
+                setToToken(token.symbol);
+                setShowToTokenSelector(false);
+              }}
+            />
+          ) : (
+            <div className="grid grid-cols-5 gap-3">
+              <Button
+                variant="outline"
+                className="col-span-2 flex justify-between items-center bg-dark"
+                onClick={() => setShowToNetworkSelector(true)}
+              >
+                {renderSelectedNetwork(toNetwork)}
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </Button>
+              
+              <Button
+                variant="outline"
+                className="col-span-1 flex justify-between items-center bg-dark"
+                onClick={() => setShowToTokenSelector(true)}
+              >
+                {renderSelectedToken(toNetwork, toToken)}
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </Button>
+              
+              <div className="col-span-2">
+                <Input
+                  type="text"
+                  placeholder="0.00"
+                  value={calculateToAmount()}
+                  readOnly
+                  className="bg-dark border-border h-full"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* SWAP INFO */}
         <div className="bg-dark p-4 rounded-lg border border-border">
           <div className="flex justify-between mb-2">
             <span className="text-muted-foreground">Exchange Rate</span>
             <span className="text-white">
-              1 {fromCurrency.toUpperCase()} = {
-                fromCurrency === "usdc" && toCurrency === "eth" ? "0.00041" :
-                fromCurrency === "usdc" && toCurrency === "btc" ? "0.000016" :
-                fromCurrency === "usdc" && toCurrency === "sol" ? "0.0625" :
-                fromCurrency === "eth" && toCurrency === "usdc" ? "2,440.00" :
-                fromCurrency === "eth" && toCurrency === "btc" ? "0.039" :
-                fromCurrency === "eth" && toCurrency === "sol" ? "152.50" :
-                fromCurrency === "btc" && toCurrency === "usdc" ? "62,500.00" :
-                fromCurrency === "btc" && toCurrency === "eth" ? "25.64" :
-                fromCurrency === "btc" && toCurrency === "sol" ? "3,906.25" :
-                fromCurrency === "sol" && toCurrency === "usdc" ? "16.00" :
-                fromCurrency === "sol" && toCurrency === "eth" ? "0.0066" :
-                fromCurrency === "sol" && toCurrency === "btc" ? "0.00026" :
-                "0"
-              } {toCurrency.toUpperCase()}
+              1 {fromToken} = 0.99 {toToken}
             </span>
           </div>
           <div className="flex justify-between mb-2">
-            <span className="text-muted-foreground">Fee</span>
-            <span className="text-white">0.5%</span>
+            <span className="text-muted-foreground">Network Fee</span>
+            <span className="text-white">$1.50</span>
           </div>
           <div className="flex justify-between pt-2 border-t border-border">
             <span className="text-muted-foreground">You will receive approximately</span>
-            <span className="text-white font-medium">{calculateToAmount()} {toCurrency.toUpperCase()}</span>
+            <span className="text-white font-medium">{calculateToAmount()} {toToken}</span>
           </div>
         </div>
         
+        {/* SWAP ACTION */}
         <Button 
           className="w-full" 
           onClick={handleSwapNow}
           disabled={!fromAmount || parseFloat(fromAmount) <= 0 || isSwapping}
         >
-          {isSwapping ? "Swapping..." : "Swap Now"}
+          {!isConnected ? "Connect Wallet" : 
+            isSwapping ? "Swapping..." : "Swap Now"}
         </Button>
       </CardContent>
     </Card>
